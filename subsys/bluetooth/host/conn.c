@@ -1951,8 +1951,12 @@ int bt_conn_le_param_update(struct bt_conn *conn,
 	}
 
 	if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
-		/* if slave conn param update timer expired just send request */
-		if (atomic_test_bit(conn->flags, BT_CONN_SLAVE_PARAM_UPDATE)) {
+		if (IS_ENABLED(CONFIG_BT_GAP_AUTO_UPDATE_CONN_PARAMS)) {
+			/* if slave conn param update timer expired just send request */
+			if (atomic_test_bit(conn->flags, BT_CONN_SLAVE_PARAM_UPDATE)) {
+				return send_conn_le_param_update(conn, param);
+			}
+		} else {
 			return send_conn_le_param_update(conn, param);
 		}
 
