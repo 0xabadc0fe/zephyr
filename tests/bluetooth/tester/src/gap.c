@@ -296,8 +296,14 @@ static void start_advertising(const uint8_t *data, uint16_t len)
 	adv_conn = atomic_test_bit(&current_settings, GAP_SETTINGS_CONNECTABLE);
 
 	/* BTP API don't allow to set empty scan response data. */
-	if (bt_le_adv_start(adv_conn ? BT_LE_ADV_CONN : BT_LE_ADV_NCONN,
-			    ad, adv_len, sd_len ? sd : NULL, sd_len) < 0) {
+	struct bt_le_adv_param param;
+	memcpy(&param, BT_LE_ADV_NCONN, sizeof param);
+	if (adv_conn) {
+		param.options |= BT_LE_ADV_OPT_CONNECTABLE;
+	} else {
+		param.options |= BT_LE_ADV_OPT_USE_IDENTITY;
+	}
+	if (bt_le_adv_start(&param, ad, adv_len, sd_len ? sd : NULL, sd_len) < 0) {
 		LOG_ERR("Failed to start advertising");
 		goto fail;
 	}
@@ -793,7 +799,7 @@ static void conn_param_update(const uint8_t *data, uint16_t len)
 	status = err < 0 ? BTP_STATUS_FAILED : BTP_STATUS_SUCCESS;
 
 rsp:
-	tester_rsp(BTP_SERVICE_ID_GAP, GAP_PASSKEY_ENTRY, CONTROLLER_INDEX,
+	tester_rsp(BTP_SERVICE_ID_GAP, GAP_CONN_PARAM_UPDATE, CONTROLLER_INDEX,
 		   status);
 }
 
