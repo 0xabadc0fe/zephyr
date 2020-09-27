@@ -17,6 +17,7 @@
 
 #include <sys/byteorder.h>
 #include <net/buf.h>
+#include <kernel.h>
 
 #include <logging/log.h>
 #define LOG_MODULE_NAME bttester_gap
@@ -30,8 +31,40 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #define BT_LE_AD_DISCOV_MASK (BT_LE_AD_LIMITED | BT_LE_AD_GENERAL)
 #define ADV_BUF_LEN (sizeof(struct gap_device_found_ev) + 2 * 31)
 
+static uint8_t ad_flags = BT_LE_AD_NO_BREDR;
+static struct bt_data ad[10] = {
+	BT_DATA(BT_DATA_FLAGS, &ad_flags, sizeof(ad_flags)),
+};
+static struct bt_data sd[10];
+
 static atomic_t current_settings;
 struct bt_conn_auth_cb cb;
+
+struct k_timer adv_timer;
+static size_t adv_data_len;
+static size_t scan_data_len;
+
+void change_adv_data_work_handler(struct k_work *work)
+{
+	int err;
+
+	ad_flags &= ~(BT_LE_AD_GENERAL | BT_LE_AD_LIMITED);
+	atomic_clear_bit(&current_settings, GAP_SETTINGS_DISCOVERABLE);
+
+	//err = bt_le_adv_update_data(ad, adv_data_len, sd, scan_data_len);
+	err = bt_le_adv_stop();
+	if (err < 0) {
+		LOG_ERR("Failed to stop advertising: %d", err);
+		return;
+	}
+}
+
+K_WORK_DEFINE(change_adv_data_work, change_adv_data_work_handler);
+
+static void adv_timer_cb(struct k_timer *timer_id)
+{
+	k_work_submit(&change_adv_data_work);
+}
 
 static void le_connected(struct bt_conn *conn, uint8_t err)
 {
@@ -201,12 +234,6 @@ static void set_connectable(uint8_t *data, uint16_t len)
 		    (uint8_t *) &rp, sizeof(rp));
 }
 
-static uint8_t ad_flags = BT_LE_AD_NO_BREDR;
-static struct bt_data ad[10] = {
-	BT_DATA(BT_DATA_FLAGS, &ad_flags, sizeof(ad_flags)),
-};
-static struct bt_data sd[10];
-
 static void set_discoverable(uint8_t *data, uint16_t len)
 {
 	const struct gap_set_discoverable_cmd *cmd = (void *) data;
@@ -303,9 +330,19 @@ static void start_advertising(const uint8_t *data, uint16_t len)
 	} else {
 		param.options |= BT_LE_ADV_OPT_USE_IDENTITY;
 	}
+	adv_data_len = adv_len;
+	scan_data_len = sd_len;
 	if (bt_le_adv_start(&param, ad, adv_len, sd_len ? sd : NULL, sd_len) < 0) {
 		LOG_ERR("Failed to start advertising");
 		goto fail;
+	}
+
+	if((ad_flags & BT_LE_AD_LIMITED) != 0)
+	{
+		tester_send(BTP_SERVICE_ID_GAP, GAP_EV_NEW_SETTINGS,
+			CONTROLLER_INDEX, (uint8_t *) current_settings, sizeof(current_settings));
+		k_timer_init(&adv_timer, adv_timer_cb, adv_timer_cb);
+		k_timer_start(&adv_timer, K_SECONDS(15), K_NO_WAIT);
 	}
 
 	atomic_set_bit(&current_settings, GAP_SETTINGS_ADVERTISING);
