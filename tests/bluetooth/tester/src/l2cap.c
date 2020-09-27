@@ -321,7 +321,9 @@ fail:
 	tester_rsp(BTP_SERVICE_ID_L2CAP, L2CAP_LISTEN, CONTROLLER_INDEX,
 		   BTP_STATUS_FAILED);
 }
-extern void conn_param_update(const uint8_t *data, uint16_t len);
+
+extern int bt_l2cap_update_conn_param(struct bt_conn *conn,
+			       const struct bt_le_conn_param *param);
 void conn_param_update(const uint8_t *data, uint16_t len)
 {
 	const struct gap_conn_param_update_cmd *cmd = (void *) data;
